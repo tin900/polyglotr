@@ -43,8 +43,9 @@ server <- function(input, output, session) {
         "English" = "en", "Arabic" = "ar", "Spanish" = "es", "French" = "fr"
       ),
       "apertium" = list(
-        "English" = "en", "Spanish" = "es", "French" = "fr", "Catalan" = "ca",
-        "Portuguese" = "pt", "Galician" = "gl"
+        # Apertium has limited language pairs - using conservative set
+        "English" = "en", "Spanish" = "es", "French" = "fr", 
+        "Catalan" = "ca", "Galician" = "gl", "Portuguese" = "pt"
       ),
       "wmcloud" = list(
         "Auto-detect" = "auto", "English" = "en", "Spanish" = "es", "French" = "fr", "German" = "de",
@@ -119,7 +120,14 @@ server <- function(input, output, session) {
         langpair <- paste0(source_lang, "-", target_lang)
         qcri_translate_text(text, langpair = langpair, domain = "general", api_key = api_key)
       },
-      "apertium" = apertium_translate(text, target_language = target_lang, source_language = source_lang),
+      "apertium" = {
+        tryCatch({
+          apertium_translate(text, target_language = target_lang, source_language = source_lang)
+        }, error = function(e) {
+          paste0("Apertium translation failed. This might be due to unsupported language pair (", 
+                 source_lang, " → ", target_lang, ") or service unavailability. Error: ", e$message)
+        })
+      },
       "wmcloud" = wmcloud_translate(text, target_language = target_lang, source_language = source_lang, format = "text"),
       stop("Unknown service")
     )
@@ -290,16 +298,18 @@ server <- function(input, output, session) {
   output$service_info <- renderUI({
     service_descriptions <- list(
       "google" = "Google Translate provides fast, neural machine translation for over 100 languages. Supports automatic language detection.",
-      "mymemory" = "MyMemory is the world's largest translation memory. Free service with good language coverage and decent quality.",
-      "pons" = "PONS offers dictionary-based translations with high accuracy. Particularly good for European languages.",
-      "linguee" = "Linguee provides context-aware translations by showing how words are used in real documents and websites.",
+      "mymemory" = "MyMemory is the world's largest translation memory. Free service with good language coverage. Note: Does not support automatic language detection - please select source language manually.",
+      "pons" = "PONS offers dictionary-based translations with high accuracy. Particularly good for European languages. Best for individual words and short phrases.",
+      "linguee" = "Linguee provides context-aware translations by showing how words are used in real documents and websites. Works best with single words.",
       "qcri" = "QCRI (Qatar Computing Research Institute) provides research-quality translations. Requires API key registration.",
-      "apertium" = "Apertium is a free, open-source rule-based machine translation platform with focus on related language pairs.",
+      "apertium" = "Apertium is a free, open-source rule-based machine translation platform. Limited language pairs available - works best with closely related languages (e.g., Spanish-Catalan, Spanish-Galician).",
       "wmcloud" = "Wikimedia Cloud Services provides community-driven translations leveraging Wikipedia's multilingual content."
     )
     
     api_info <- list(
-      "qcri" = "Register for a free API key at: https://mt.qcri.org/api/register"
+      "qcri" = "Register for a free API key at: https://mt.qcri.org/api/register",
+      "mymemory" = "MyMemory does not support automatic language detection. Please select both source and target languages manually.",
+      "apertium" = "Apertium supports limited language pairs. If translation fails, try a different language pair or service."
     )
     
     description <- service_descriptions[[input$service]]
@@ -308,8 +318,8 @@ server <- function(input, output, session) {
     div(
       p(description),
       if (!is.null(extra_info)) {
-        div(style = "background-color: #e7f3ff; padding: 10px; border-left: 4px solid #2196F3;",
-            strong("API Key Required: "), extra_info)
+        div(style = "background-color: #fff3cd; padding: 10px; border-left: 4px solid #ffc107; margin-top: 10px;",
+            strong("Important: "), extra_info)
       }
     )
   })
