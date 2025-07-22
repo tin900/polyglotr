@@ -42,12 +42,13 @@ source("app.R")
 The following R packages are required:
 - `shiny`
 - `shinydashboard` 
+- `shinyjs`
 - `DT`
 - `polyglotr`
 
 Install missing packages with:
 ```r
-install.packages(c("shiny", "shinydashboard", "DT"))
+install.packages(c("shiny", "shinydashboard", "DT", "shinyjs"))
 ```
 
 ## Usage
