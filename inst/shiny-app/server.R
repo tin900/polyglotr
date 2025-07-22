@@ -56,6 +56,11 @@ server <- function(input, output, session) {
   
   # Update language choices when service changes
   observeEvent(input$service, {
+    # Prevent processing if service is NULL or empty
+    if (is.null(input$service) || input$service == "") {
+      return()
+    }
+    
     lang_options <- get_language_options(input$service)
     
     # Update source language options
@@ -262,9 +267,7 @@ server <- function(input, output, session) {
   })
   
   # Handle reuse translation
-  observe({
-    req(input$reuse_translation)
-    
+  observeEvent(input$reuse_translation, {
     # Validate the reuse_translation index
     if (input$reuse_translation > length(values$history) || input$reuse_translation < 1) {
       return()
@@ -277,9 +280,14 @@ server <- function(input, output, session) {
       return()
     }
     
-    # Only update if the entry is valid
-    updateSelectInput(session, "service", selected = entry$service)
-    updateTextAreaInput(session, "input_text", value = entry$input)
+    # Only update if the entry is valid and different from current selections
+    if (entry$service != input$service) {
+      updateSelectInput(session, "service", selected = entry$service)
+    }
+    
+    if (entry$input != input$input_text) {
+      updateTextAreaInput(session, "input_text", value = entry$input)
+    }
     # Language selection will be updated by the service change observer
   })
   
