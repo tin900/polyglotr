@@ -4,6 +4,7 @@
 library(shiny)
 library(shinydashboard)
 library(DT)
+library(shinyjs)
 
 # Define UI for the polyglotr translation app
 ui <- dashboardPage(
@@ -12,11 +13,28 @@ ui <- dashboardPage(
   dashboardSidebar(
     sidebarMenu(
       menuItem("Translator", tabName = "translator", icon = icon("language")),
+      menuItem("History", tabName = "history", icon = icon("history")),
       menuItem("About", tabName = "about", icon = icon("info-circle"))
     )
   ),
   
   dashboardBody(
+    useShinyjs(),  # Enable shinyjs for copy functionality
+    
+    # Custom CSS for better styling
+    tags$head(
+      tags$style(HTML("
+        .content-wrapper, .right-side {
+          background-color: #f4f4f4;
+        }
+        .fa-spin {
+          animation: fa-spin 2s infinite linear;
+        }
+        .history-entry:hover {
+          background-color: #f0f0f0;
+        }
+      "))
+    ),
     tabItems(
       # Main translator tab
       tabItem(tabName = "translator",
@@ -74,6 +92,12 @@ ui <- dashboardPage(
             
             # Input text area
             h4("Source Text:"),
+            div(style = "display: flex; align-items: center; margin-bottom: 10px;",
+                actionButton("load_sample", "Try Sample", 
+                           class = "btn-info btn-sm", style = "margin-right: 10px;"),
+                actionButton("copy_input", "Copy Input", 
+                           class = "btn-default btn-sm")),
+            
             textAreaInput("input_text", 
                          label = NULL,
                          placeholder = "Enter text to translate...",
@@ -91,7 +115,11 @@ ui <- dashboardPage(
             hr(),
             
             # Translation output
-            h4("Translation:"),
+            div(style = "display: flex; align-items: center; margin-bottom: 10px;",
+                h4("Translation:", style = "margin: 0; margin-right: 10px;"),
+                actionButton("copy_output", "Copy Translation", 
+                           class = "btn-success btn-sm")),
+            
             div(id = "translation_output",
                 style = "min-height: 150px; border: 1px solid #ddd; padding: 10px; background-color: #f9f9f9;",
                 uiOutput("translation_result"))
@@ -101,10 +129,74 @@ ui <- dashboardPage(
         # Service information box
         fluidRow(
           box(
-            title = "Service Information", status = "info", solidHeader = TRUE,
-            width = 12, collapsible = TRUE, collapsed = TRUE,
+            title = "Service Information & polyglotr Documentation", status = "info", solidHeader = TRUE,
+            width = 8, collapsible = TRUE, collapsed = TRUE,
             
-            uiOutput("service_info")
+            uiOutput("service_info"),
+            
+            hr(),
+            
+            h4("Using polyglotr in R:"),
+            p("This app is powered by the", strong("polyglotr"), "R package. Here are some code examples:"),
+            
+            h5("Basic Translation:"),
+            tags$pre(tags$code('
+library(polyglotr)
+
+# Google Translate
+google_translate("Hello world", target_language = "es")
+
+# MyMemory
+mymemory_translate("Hello world", target_language = "fr", source_language = "en")
+
+# PONS Dictionary
+pons_translate("house", target_language = "de", source_language = "en")
+            ')),
+            
+            h5("Language Detection:"),
+            tags$pre(tags$code('
+# Detect language
+language_detect("Bonjour le monde")
+            ')),
+            
+            p("For complete documentation, visit:", 
+              tags$a("polyglotr GitHub repository", 
+                     href = "https://github.com/Tomeriko96/polyglotr", 
+                     target = "_blank"))
+          ),
+          
+          box(
+            title = "Quick Actions", status = "warning", solidHeader = TRUE,
+            width = 4, collapsible = TRUE, collapsed = TRUE,
+            
+            h5("Common Language Pairs:"),
+            actionButton("preset_en_es", "EN → ES", class = "btn-default btn-sm", style = "margin: 2px;"),
+            actionButton("preset_en_fr", "EN → FR", class = "btn-default btn-sm", style = "margin: 2px;"),
+            actionButton("preset_en_de", "EN → DE", class = "btn-default btn-sm", style = "margin: 2px;"),
+            actionButton("preset_es_en", "ES → EN", class = "btn-default btn-sm", style = "margin: 2px;"),
+            actionButton("preset_fr_en", "FR → EN", class = "btn-default btn-sm", style = "margin: 2px;"),
+            actionButton("preset_de_en", "DE → EN", class = "btn-default btn-sm", style = "margin: 2px;"),
+            
+            hr(),
+            
+            h5("Feedback:"),
+            p("Found a bug or have a suggestion?"),
+            tags$a("Report Issue", href = "https://github.com/Tomeriko96/polyglotr/issues", 
+                   target = "_blank", class = "btn btn-primary btn-sm")
+          )
+        )
+      ),
+      
+      # History tab
+      tabItem(tabName = "history",
+        fluidRow(
+          box(
+            title = "Recent Translations", status = "primary", solidHeader = TRUE,
+            width = 12,
+            
+            p("Your recent translations are saved here for easy access."),
+            
+            uiOutput("history_table")
           )
         )
       ),

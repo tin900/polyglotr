@@ -2,6 +2,7 @@
 
 library(shiny)
 library(polyglotr)
+library(shinyjs)
 
 # Define server logic for the polyglotr translation app
 server <- function(input, output, session) {
@@ -10,7 +11,9 @@ server <- function(input, output, session) {
   values <- reactiveValues(
     translation = NULL,
     detected_language = NULL,
-    error_message = NULL
+    error_message = NULL,
+    is_translating = FALSE,
+    history = list()
   )
   
   # Language options for different services
@@ -24,7 +27,8 @@ server <- function(input, output, session) {
         "Dutch" = "nl", "Swedish" = "sv", "Norwegian" = "no", "Danish" = "da"
       ),
       "mymemory" = list(
-        "Auto-detect" = "auto", "English" = "en", "Spanish" = "es", "French" = "fr",
+        # MyMemory doesn't support auto-detect, removed "auto" option
+        "English" = "en", "Spanish" = "es", "French" = "fr",
         "German" = "de", "Italian" = "it", "Portuguese" = "pt", "Russian" = "ru"
       ),
       "pons" = list(
@@ -32,7 +36,7 @@ server <- function(input, output, session) {
         "Italian" = "it", "Portuguese" = "pt", "Russian" = "ru", "Polish" = "pl"
       ),
       "linguee" = list(
-        "English" = "en", "German" = "de", "French" = "fr", "Spanish" = "es",
+        "Auto-detect" = "auto", "English" = "en", "German" = "de", "French" = "fr", "Spanish" = "es",
         "Italian" = "it", "Portuguese" = "pt", "Russian" = "ru", "Chinese" = "zh"
       ),
       "qcri" = list(
@@ -43,7 +47,7 @@ server <- function(input, output, session) {
         "Portuguese" = "pt", "Galician" = "gl"
       ),
       "wmcloud" = list(
-        "English" = "en", "Spanish" = "es", "French" = "fr", "German" = "de",
+        "Auto-detect" = "auto", "English" = "en", "Spanish" = "es", "French" = "fr", "German" = "de",
         "Italian" = "it", "Portuguese" = "pt"
       )
     )
@@ -54,8 +58,8 @@ server <- function(input, output, session) {
     lang_options <- get_language_options(input$service)
     
     # Update source language options
-    if (input$service %in% c("pons", "linguee")) {
-      # Some services don't support auto-detect
+    if (input$service %in% c("pons", "mymemory", "qcri", "apertium")) {
+      # These services don't support auto-detect
       source_options <- lang_options[names(lang_options) != "Auto-detect"]
       selected_source <- "en"
     } else {
@@ -67,9 +71,10 @@ server <- function(input, output, session) {
                       choices = source_options,
                       selected = selected_source)
     
-    # Update target language options
+    # Update target language options (exclude source language from target options)
+    target_options <- lang_options[names(lang_options) != "Auto-detect"]
     updateSelectInput(session, "target_lang",
-                      choices = lang_options,
+                      choices = target_options,
                       selected = "en")
   })
   
@@ -101,7 +106,11 @@ server <- function(input, output, session) {
       "linguee" = {
         # Linguee returns multiple options, we'll take the first one
         result <- linguee_word_translation(text, target_language = target_lang, source_language = source_lang)
-        if (length(result) > 0) result[1] else "No translation found"
+        if (length(result) > 0 && !is.na(result[1]) && result[1] != "") {
+          result[1] 
+        } else {
+          "No translation found. Try a single word or different language pair."
+        }
       },
       "qcri" = {
         if (is.null(api_key) || api_key == "") {
@@ -116,16 +125,43 @@ server <- function(input, output, session) {
     )
   }
   
+  # Sample text options
+  sample_texts <- list(
+    "Hello, world! This is a demonstration of the polyglotr Shiny app.",
+    "The quick brown fox jumps over the lazy dog.",
+    "Good morning! How are you today?",
+    "Technology is transforming our world.",
+    "Welcome to the polyglotr translation service."
+  )
+  
+  # Load sample text
+  observeEvent(input$load_sample, {
+    sample_text <- sample(sample_texts, 1)[[1]]
+    updateTextAreaInput(session, "input_text", value = sample_text)
+  })
+  
+  # Copy input text
+  observeEvent(input$copy_input, {
+    runjs(paste0("navigator.clipboard.writeText('", gsub("'", "\\'", input$input_text), "');"))
+    showNotification("Input text copied to clipboard!", type = "message")
+  })
+  
+  # Copy translation
+  observeEvent(input$copy_output, {
+    if (!is.null(values$translation) && values$translation != "Translating...") {
+      runjs(paste0("navigator.clipboard.writeText('", gsub("'", "\\'", values$translation), "');"))
+      showNotification("Translation copied to clipboard!", type = "message")
+    }
+  })
+  
   # Main translation action
   observeEvent(input$translate, {
     req(input$input_text)
     
-    # Clear previous results
+    # Clear previous results and set loading state
     values$translation <- NULL
     values$error_message <- NULL
-    
-    # Show loading message
-    values$translation <- "Translating..."
+    values$is_translating <- TRUE
     
     tryCatch({
       result <- translate_text(
@@ -137,10 +173,27 @@ server <- function(input, output, session) {
       )
       
       values$translation <- result
+      values$is_translating <- FALSE
+      
+      # Add to history
+      new_entry <- list(
+        timestamp = Sys.time(),
+        input = input$input_text,
+        output = result,
+        service = input$service,
+        source_lang = input$source_lang,
+        target_lang = input$target_lang
+      )
+      
+      values$history <- c(list(new_entry), values$history)
+      if (length(values$history) > 10) {
+        values$history <- values$history[1:10]  # Keep only last 10
+      }
       
     }, error = function(e) {
       values$error_message <- paste("Translation failed:", e$message)
       values$translation <- NULL
+      values$is_translating <- FALSE
     })
   })
   
@@ -151,17 +204,86 @@ server <- function(input, output, session) {
   
   # Output for translation result
   output$translation_result <- renderUI({
-    if (!is.null(values$error_message)) {
+    if (values$is_translating) {
+      div(style = "text-align: center; color: #2196F3; font-size: 16px;",
+          icon("spinner", class = "fa-spin"),
+          p("Translating...", style = "margin-top: 10px;"))
+    } else if (!is.null(values$error_message)) {
       div(style = "color: red;", h5("Error:"), p(values$error_message))
     } else if (!is.null(values$translation)) {
-      if (values$translation == "Translating...") {
-        div(style = "color: blue;", p(values$translation))
-      } else {
-        div(style = "color: green; font-size: 16px;", p(values$translation))
-      }
+      div(style = "color: green; font-size: 16px;", p(values$translation))
     } else {
       p("Click 'Translate' to see the translation here.", style = "color: gray;")
     }
+  })
+  
+  # History output
+  output$history_table <- renderUI({
+    if (length(values$history) == 0) {
+      p("No recent translations.", style = "color: gray; font-style: italic;")
+    } else {
+      history_items <- lapply(1:min(5, length(values$history)), function(i) {
+        entry <- values$history[[i]]
+        div(class = "history-entry",
+            style = "border: 1px solid #ddd; margin: 5px 0; padding: 10px; border-radius: 5px;",
+            div(style = "font-weight: bold; color: #2196F3;", 
+                paste(entry$service, ":", entry$source_lang, "→", entry$target_lang)),
+            div(style = "margin: 5px 0; font-size: 12px; color: gray;", 
+                format(entry$timestamp, "%H:%M:%S")),
+            div(style = "margin: 5px 0;", 
+                strong("Input: "), substr(entry$input, 1, 50), 
+                if(nchar(entry$input) > 50) "..." else ""),
+            div(style = "margin: 5px 0;", 
+                strong("Output: "), substr(entry$output, 1, 50),
+                if(nchar(entry$output) > 50) "..." else ""),
+            actionButton(paste0("reuse_", i), "Reuse", 
+                        class = "btn-xs btn-default",
+                        onclick = paste0("Shiny.setInputValue('reuse_translation', ", i, ");"))
+        )
+      })
+      do.call(tagList, history_items)
+    }
+  })
+  
+  # Handle reuse translation
+  observe({
+    req(input$reuse_translation)
+    entry <- values$history[[input$reuse_translation]]
+    
+    updateSelectInput(session, "service", selected = entry$service)
+    updateTextAreaInput(session, "input_text", value = entry$input)
+    # Language selection will be updated by the service change observer
+  })
+  
+  # Quick language preset buttons
+  observeEvent(input$preset_en_es, {
+    updateSelectInput(session, "source_lang", selected = "en")
+    updateSelectInput(session, "target_lang", selected = "es")
+  })
+  
+  observeEvent(input$preset_en_fr, {
+    updateSelectInput(session, "source_lang", selected = "en")
+    updateSelectInput(session, "target_lang", selected = "fr")
+  })
+  
+  observeEvent(input$preset_en_de, {
+    updateSelectInput(session, "source_lang", selected = "en")
+    updateSelectInput(session, "target_lang", selected = "de")
+  })
+  
+  observeEvent(input$preset_es_en, {
+    updateSelectInput(session, "source_lang", selected = "es")
+    updateSelectInput(session, "target_lang", selected = "en")
+  })
+  
+  observeEvent(input$preset_fr_en, {
+    updateSelectInput(session, "source_lang", selected = "fr")
+    updateSelectInput(session, "target_lang", selected = "en")
+  })
+  
+  observeEvent(input$preset_de_en, {
+    updateSelectInput(session, "source_lang", selected = "de")
+    updateSelectInput(session, "target_lang", selected = "en")
   })
   
   # Service information

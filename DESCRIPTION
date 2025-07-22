@@ -31,6 +31,7 @@ Suggests:
     text2vec,
     shiny,
     shinydashboard,
+    shinyjs,
     DT
 Config/testthat/edition: 3
 VignetteBuilder: knitr
