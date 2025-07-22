@@ -25,7 +25,7 @@
 launch_polyglotr_app <- function(launch.browser = TRUE, port = NULL, host = "127.0.0.1") {
   
   # Check if required packages are available
-  required_packages <- c("shiny", "shinydashboard", "DT")
+  required_packages <- c("shiny", "shinydashboard", "DT", "shinyjs")
   missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
   
   if (length(missing_packages) > 0) {

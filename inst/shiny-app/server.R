@@ -232,6 +232,14 @@ server <- function(input, output, session) {
     } else {
       history_items <- lapply(1:min(5, length(values$history)), function(i) {
         entry <- values$history[[i]]
+        
+        # Validate entry has all required fields to prevent "argument is of length zero" errors
+        if (is.null(entry) || 
+            is.null(entry$service) || is.null(entry$source_lang) || is.null(entry$target_lang) ||
+            is.null(entry$input) || is.null(entry$output) || is.null(entry$timestamp)) {
+          return(div(style = "color: red; font-style: italic;", "Invalid history entry"))
+        }
+        
         div(class = "history-entry",
             style = "border: 1px solid #ddd; margin: 5px 0; padding: 10px; border-radius: 5px;",
             div(style = "font-weight: bold; color: #2196F3;", 
@@ -239,11 +247,11 @@ server <- function(input, output, session) {
             div(style = "margin: 5px 0; font-size: 12px; color: gray;", 
                 format(entry$timestamp, "%H:%M:%S")),
             div(style = "margin: 5px 0;", 
-                strong("Input: "), substr(entry$input, 1, 50), 
-                if(nchar(entry$input) > 50) "..." else ""),
+                strong("Input: "), substr(as.character(entry$input), 1, 50), 
+                if(nchar(as.character(entry$input)) > 50) "..." else ""),
             div(style = "margin: 5px 0;", 
-                strong("Output: "), substr(entry$output, 1, 50),
-                if(nchar(entry$output) > 50) "..." else ""),
+                strong("Output: "), substr(as.character(entry$output), 1, 50),
+                if(nchar(as.character(entry$output)) > 50) "..." else ""),
             actionButton(paste0("reuse_", i), "Reuse", 
                         class = "btn-xs btn-default",
                         onclick = paste0("Shiny.setInputValue('reuse_translation', ", i, ");"))
@@ -256,8 +264,20 @@ server <- function(input, output, session) {
   # Handle reuse translation
   observe({
     req(input$reuse_translation)
+    
+    # Validate the reuse_translation index
+    if (input$reuse_translation > length(values$history) || input$reuse_translation < 1) {
+      return()
+    }
+    
     entry <- values$history[[input$reuse_translation]]
     
+    # Validate entry exists and has required fields
+    if (is.null(entry) || is.null(entry$service) || is.null(entry$input)) {
+      return()
+    }
+    
+    # Only update if the entry is valid
     updateSelectInput(session, "service", selected = entry$service)
     updateTextAreaInput(session, "input_text", value = entry$input)
     # Language selection will be updated by the service change observer
